@@ -1,25 +1,35 @@
+// index.js
+require('dotenv').config(); // Load .env variables at the very top
+
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const streamifier = require('streamifier');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+
 const app = express();
 const port = process.env.PORT || 5000;
-require('dotenv').config();
 
-// middle ware 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// configure cloudinary
+// ---------- CLOUDINARY CONFIG ----------
 cloudinary.config({
  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
  api_key: process.env.CLOUDINARY_API_KEY,
  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// MongoDB setup
+// Debug: check if Cloudinary keys loaded
+console.log("Cloudinary Config:", {
+ cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+ api_key: process.env.CLOUDINARY_API_KEY,
+ api_secret: process.env.CLOUDINARY_API_SECRET ? 'loaded' : 'missing'
+});
+
+// ---------- MONGODB CONFIG ----------
 const uri = `mongodb+srv://${process.env.USER_DB}:${process.env.PASSWORD_DB}@cluster0.vxwdk0h.mongodb.net/?appName=Cluster0`;
 const client = new MongoClient(uri, {
  serverApi: {
@@ -29,10 +39,10 @@ const client = new MongoClient(uri, {
  }
 });
 
-// multer memory storage
+// ---------- MULTER SETUP ----------
 const upload = multer({ storage: multer.memoryStorage() });
 
-// helper to upload to cloudinary
+// ---------- HELPER FUNCTION TO UPLOAD TO CLOUDINARY ----------
 const uploadToCloudinary = (buffer) => {
  return new Promise((resolve, reject) => {
   const stream = cloudinary.uploader.upload_stream(
@@ -46,39 +56,48 @@ const uploadToCloudinary = (buffer) => {
  });
 };
 
+// ---------- MAIN FUNCTION ----------
 async function run() {
  try {
   const tutorCollections = client.db("TutorsDB").collection("Tutors");
   const confirmTutorCollection = client.db("confirmDB").collection("confirmTutors");
-  const userCollection = client.db('userDB').collection('users');
+  const userCollection = client.db("userDB").collection("users");
+  const studentCollection = client.db("studentDB").collection("students");
 
-  // Get all tutors
-  app.get('/tutors', async (req, res) => {
-   const cursor = tutorCollections.find();
-   const result = await cursor.toArray();
-   res.send(result);
+
+  // Root
+  app.get('/', (req, res) => {
+   res.send('User management server is running');
   });
 
-  // Get tutor by id
+  // tutors
+  app.get('/tutors', async (req, res) => {
+   const tutors = await tutorCollections.find().toArray();
+   res.send(tutors);
+  });
+
   app.get('/tutors/:id', async (req, res) => {
    const id = req.params.id;
-   const query = { _id: new ObjectId(id) };
-   const result = await tutorCollections.findOne(query);
-   res.send(result);
+   const tutor = await tutorCollections.findOne({ _id: new ObjectId(id) });
+   res.send(tutor);
   });
 
-  // Delete tutor
   app.delete('/tutors/:id', async (req, res) => {
    const id = req.params.id;
-   const query = { _id: new ObjectId(id) };
-   const result = await tutorCollections.deleteOne(query);
+   const result = await tutorCollections.deleteOne({ _id: new ObjectId(id) });
    res.send(result);
   });
 
-  // Upload tutor (Cloudinary)
+  // Upload tutor with image
   app.post('/tutors', upload.single('file'), async (req, res) => {
+   console.log("REQ FILE:", req.file);
+   console.log("REQ BODY:", req.body);
+
+   if (!req.file) return res.status(400).send({ error: 'No file uploaded' });
+
    try {
     const cloudinaryResult = await uploadToCloudinary(req.file.buffer);
+    console.log("Cloudinary Result:", cloudinaryResult);
 
     const tutor = {
      name: req.body.name,
@@ -93,60 +112,69 @@ async function run() {
     const result = await tutorCollections.insertOne(tutor);
     res.send(result);
    } catch (error) {
-    console.error(error);
-    res.status(500).send({ error: 'Image upload failed' });
+    console.error("Cloudinary Upload Error:", error);
+    res.status(500).send({ error: 'Image upload failed', details: error.message });
    }
   });
 
-  // Confirm tutors
+  // confirm tutor 
   app.get('/confirm', async (req, res) => {
-   const cursor = confirmTutorCollection.find();
-   const result = await cursor.toArray();
-   res.send(result);
+   const confirms = await confirmTutorCollection.find().toArray();
+   res.send(confirms);
   });
 
   app.post('/confirm', async (req, res) => {
-   const user = req.body;
-   const result = await confirmTutorCollection.insertOne(user);
+   const result = await confirmTutorCollection.insertOne(req.body);
    res.send(result);
   });
 
   app.delete('/confirm/:id', async (req, res) => {
    const id = req.params.id;
-   const result = await confirmTutorCollection.deleteOne({ _id: id });
+   const result = await confirmTutorCollection.deleteOne({ _id: new ObjectId(id) });
    res.send(result);
   });
 
-  // Users
+  // users
   app.get('/users', async (req, res) => {
-   const cursor = userCollection.find();
-   const result = await cursor.toArray();
-   res.send(result);
+   const users = await userCollection.find().toArray();
+   res.send(users);
   });
 
   app.post('/users', async (req, res) => {
-   const user = req.body;
-   const result = await userCollection.insertOne(user);
+   const result = await userCollection.insertOne(req.body);
    res.send(result);
   });
 
   app.delete('/users/:id', async (req, res) => {
    const id = req.params.id;
-   const query = { _id: new ObjectId(id) };
-   const result = await userCollection.deleteOne(query);
+   const result = await userCollection.deleteOne({ _id: new ObjectId(id) });
    res.send(result);
   });
 
+  // students  
+
+  app.get('/students', async (req, res) => {
+   const users = await studentCollection.find().toArray();
+   res.send(users);
+  })
+
+  app.post('/students', async (req, res) => {
+   const user = req.body;
+   const result = await studentCollection.insertOne(user);
+   res.send(result);
+  })
+
+
+
+
  } finally {
-  // client.close(); // leave commented
+  // Keep MongoDB client open
  }
 }
-run().catch(console.dir);
 
-app.get('/', (req, res) => {
- res.send('user management server is running ');
-});
+run().catch(console.error);
 
+// Start server
 app.listen(port, () => {
- console.log(`server is running on port ${port}`);
+ console.log(`Server running on port ${port}`);
 });
