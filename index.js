@@ -131,7 +131,7 @@ async function run() {
 
   app.delete('/confirm/:id', async (req, res) => {
    const id = req.params.id;
-   const result = await confirmTutorCollection.deleteOne({ _id: new ObjectId(id) });
+   const result = await confirmTutorCollection.deleteOne({ _id: id});
    res.send(result);
   });
 
