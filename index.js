@@ -99,7 +99,8 @@ async function run() {
     const cloudinaryResult = await uploadToCloudinary(req.file.buffer);
     console.log("Cloudinary Result:", cloudinaryResult);
 
-    const tutor = {
+    const tutor = { 
+     tutorId: req.body.tutorId,
      name: req.body.name,
      dept: req.body.dept,
      university: req.body.university,
